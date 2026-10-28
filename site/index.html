@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src * data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111113" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Second cerveau">
+  <title>Second cerveau</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <script src="theme.js"></script>
+</head>
+<body>
+  <div id="lock" class="lock" hidden>
+    <form id="lock-form" class="lock-card" autocomplete="on">
+      <img src="icon.svg" alt="" class="lock-logo" width="56" height="56">
+      <h1>Ton second cerveau</h1>
+      <p class="lock-sub" id="lock-sub">Entre ton mot de passe pour ouvrir tes notes.</p>
+      <input type="text" name="username" value="second-cerveau" autocomplete="username" hidden>
+      <input id="lock-password" type="password" autocomplete="current-password" placeholder="Mot de passe" required>
+      <label class="lock-remember"><input id="lock-remember" type="checkbox" checked> Se souvenir de cet appareil</label>
+      <button type="submit" id="lock-submit" class="btn btn-primary">Ouvrir</button>
+      <p class="lock-error" id="lock-error" role="alert"></p>
+    </form>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <aside id="sidebar" class="sidebar" aria-label="Navigation"></aside>
+    <div id="scrim" class="scrim"></div>
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn" data-action="menu" aria-label="Menu">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <a href="#/" class="topbar-title"><img src="icon.svg" alt="" width="22" height="22"> Second cerveau</a>
+        <button class="icon-btn" data-action="search" aria-label="Rechercher">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        </button>
+      </header>
+      <div id="view" class="view"></div>
+    </main>
+    <div id="reader-scrim" class="reader-scrim"></div>
+    <section id="reader" class="reader" aria-hidden="true" aria-label="Note"></section>
+  </div>
+
+  <div id="palette" class="palette" hidden>
+    <div class="palette-box" role="dialog" aria-label="Recherche">
+      <div class="palette-input">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="palette-q" type="search" placeholder="Une note, un topic, un passage Readwise…" autocomplete="off" spellcheck="false">
+        <kbd>Esc</kbd>
+      </div>
+      <div id="palette-results" class="palette-results"></div>
+      <div class="palette-foot"><span><kbd>↑</kbd><kbd>↓</kbd> naviguer</span><span><kbd>Entrée</kbd> ouvrir</span><span><kbd>Esc</kbd> fermer</span></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="app.js" type="module"></script>
+</body>
+</html>

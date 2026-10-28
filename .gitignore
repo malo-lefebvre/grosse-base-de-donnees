@@ -1,0 +1,4 @@
+.env*
+!.env.example
+site/data.bin
+__pycache__/
