@@ -23,6 +23,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: astral-sh/setup-uv@v6
+        with:
+          cache-dependency-glob: sync/sync.py
 
       - name: Lire Notion et Readwise, puis chiffrer
         run: uv run sync/sync.py
