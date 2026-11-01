@@ -198,7 +198,14 @@ export function createRevision(ctx) {
     });
     if (method === "GET" && response.status === 404) return null;
     if (response.status === 409 || response.status === 422) throw Object.assign(new Error("conflit"), { conflict: true });
-    if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "jeton refusé" : `GitHub ${response.status}`);
+    if (!response.ok) {
+      const reasons = {
+        401: "jeton refusé : invalide ou expiré",
+        403: "jeton sans droit d'écriture : il lui faut Contents en Read and write",
+        404: "jeton sans accès à ce dépôt : coche grosse-base-de-donnees dans Repository access",
+      };
+      throw new Error(reasons[response.status] || `GitHub ${response.status}`);
+    }
     return response.json();
   }
 
