@@ -1,0 +1,41 @@
+name: Appliquer les envois de révision
+
+# La page Révision écrit envois.bin (chiffré) sur la branche « progression » : on l'applique dans Notion.
+on:
+  push:
+    branches: [progression]
+    paths: [envois.bin]
+  workflow_dispatch:
+
+permissions:
+  contents: write # pour retirer les envois appliqués de la file
+  actions: write # pour relancer la synchro du site
+
+concurrency:
+  group: appliquer
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+
+      - uses: actions/checkout@v4
+        with:
+          ref: progression
+          path: progression
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          cache-dependency-glob: main/sync/apply.py
+
+      - name: Appliquer dans Notion
+        run: uv run main/sync/apply.py progression
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
