@@ -427,6 +427,25 @@ def encrypt(payload: bytes, password: str) -> bytes:
     return vault.encrypt(payload, password, bytes.fromhex(CONFIG["salt"]), int(CONFIG["iterations"]))
 
 
+def check_write_token(token: str, repo: str, branch: str) -> None:
+    """Vérifie le jeton d'écriture sans jamais l'afficher : lecture de la branche, puis création et suppression
+    d'une branche jetable (il faut pour cela le droit Contents en écriture)."""
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    with httpx.Client(base_url="https://api.github.com", headers=headers, timeout=30) as gh:
+        found = gh.get(f"/repos/{repo}/git/ref/heads/{branch}")
+        if found.status_code != 200:
+            print(f"  jeton d'écriture refusé dès la lecture (HTTP {found.status_code}) : invalide, expiré ou mal collé", flush=True)
+            return
+        name = f"verif-jeton-{int(time.time())}"
+        created = gh.post(f"/repos/{repo}/git/refs", json={"ref": f"refs/heads/{name}", "sha": found.json()["object"]["sha"]})
+        if created.status_code != 201:
+            print(f"  jeton d'écriture valide mais sans droit d'écriture (HTTP {created.status_code}) : "
+                  "il lui faut Contents en Read and write sur ce dépôt", flush=True)
+            return
+        gh.delete(f"/repos/{repo}/git/refs/heads/{name}")
+        print("  jeton d'écriture accepté (lecture et écriture)", flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--env-file", action="append", default=[], help="fichier .env à charger (répétable)")
@@ -460,6 +479,9 @@ def main() -> None:
     write_token = os.environ.get("DASHBOARD_WRITE_TOKEN", "").strip()
     if write_token:
         data["write"] = {"token": write_token, "branch": CONFIG.get("progressBranch", "progression")}
+        # Pas à chaque heure : seulement quand la synchro est lancée à la main ou par un nouveau code.
+        if os.environ.get("GITHUB_EVENT_NAME") in ("push", "workflow_dispatch") and data["repo"]:
+            check_write_token(write_token, data["repo"], data["write"]["branch"])
 
     raw = gzip.compress(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"), 9)
     out = Path(args.out) / "data.bin"

@@ -8,7 +8,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== location.origin) return;
   event.respondWith(
-    fetch(event.request)
+    // « no-cache » : on redemande toujours au serveur s'il y a plus récent, pour voir une nouvelle version dès le rechargement.
+    fetch(event.request, { cache: "no-cache" })
       .then((response) => {
         if (response.ok) {
           const copy = response.clone();
