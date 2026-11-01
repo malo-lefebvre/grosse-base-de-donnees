@@ -32,6 +32,8 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           READWISE_TOKEN: ${{ secrets.READWISE_TOKEN }}
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DASHBOARD_WRITE_TOKEN: ${{ secrets.DASHBOARD_WRITE_TOKEN }}
 
       - uses: actions/configure-pages@v5
 

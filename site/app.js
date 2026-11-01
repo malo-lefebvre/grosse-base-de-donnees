@@ -1,4 +1,5 @@
 // Second cerveau : dashboard PARA (Notion + Readwise). Les données arrivent chiffrées et sont ouvertes dans le navigateur.
+import { createRevision } from "./revision.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -56,6 +57,8 @@ const PATHS = {
   shuffle: '<path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>',
   quote: '<path d="M7 7h4v4c0 3-2 5-4 6M15 7h4v4c0 3-2 5-4 6"/>',
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  cards: '<rect x="3" y="7" width="13" height="14" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v12"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
 };
 const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${PATHS[name]}</svg>`;
 
@@ -417,6 +420,7 @@ function renderSidebar() {
     <button class="search-trigger" data-action="search">${icon("search")}<span>Rechercher</span><kbd>Ctrl K</kbd></button>
     <nav class="nav-group">
       ${item("#/", "Accueil", icon("home"))}
+      ${item("#/revision", "Révision", icon("cards"), RV.dueCount() || null)}
       ${item("#/notes", "Toutes les notes", icon("notes"), S.notes.length)}
       ${favourites ? item("#/favoris", "Favoris", icon("star"), favourites) : ""}
       ${S.inbox.length ? item("#/inbox", "À classer", icon("inbox"), S.inbox.length) : ""}
@@ -482,8 +486,13 @@ function renderView(parts, params) {
   const [view, id] = parts;
   S.page = PAGE;
   S.view = view || "home";
+  RV.stop();
   const views = {
     home: viewHome,
+    revision: () => {
+      mountView = () => RV.mount();
+      return RV.view(parts.slice(1));
+    },
     notes: () => viewNoteList("notes", "Toutes les notes", "Tout ce que tu as capturé, au même endroit.", S.notes),
     favoris: () => viewNoteList("favoris", "Favoris", "Les notes marquées comme favorites dans Notion.", S.notes.filter((n) => n.favourite)),
     inbox: () => viewNoteList("inbox", "À classer", "Ces notes n'ont pas encore de Topic actif.", S.inbox),
@@ -501,7 +510,8 @@ function renderView(parts, params) {
   window.scrollTo(0, 0);
   $("#app").classList.remove("menu-open");
   renderSidebar();
-  document.title = S.view === "home" ? "Second cerveau" : `${el.querySelector("h1")?.textContent.trim()} · Second cerveau`;
+  const heading = el.querySelector("h1")?.textContent.trim() || (S.view === "revision" ? "Révision" : "");
+  document.title = S.view === "home" || !heading ? "Second cerveau" : `${heading} · Second cerveau`;
 }
 
 // Parties de vue qui se remplissent après coup (listes filtrables, résultats).
@@ -518,6 +528,7 @@ function viewHome() {
       <h1>${hello} Malo</h1>
       <p>Sur quel sujet tu travailles aujourd'hui ?</p>
       <button class="hero-search" data-action="search">${icon("search")}<span>Chercher dans tes notes et tes lectures…</span><kbd>Ctrl K</kbd></button>
+      ${RV.dueCount() ? `<a class="btn btn-primary hero-review" href="#/revision/jour">${icon("cards")}<span>${plural(RV.dueCount(), "carte à réviser", "cartes à réviser")} aujourd'hui</span></a>` : `<a class="btn hero-review" href="#/revision">${icon("cards")}<span>Réviser mes notes</span></a>`}
       <div class="quick">
         ${S.topics
           .filter((t) => t.count)
@@ -1233,7 +1244,8 @@ function bindEvents() {
 
   document.addEventListener("change", (e) => {
     const el = e.target;
-    if (el.dataset.sort) {
+    if (el.dataset.rv) RV.change(el);
+    else if (el.dataset.sort) {
       S.filters[el.dataset.sort].sort = el.value;
       fillNotes(el.dataset.sort, currentNotes());
     } else if (el.id === "rw-sort") {
@@ -1280,6 +1292,7 @@ function bindEvents() {
       return;
     }
     if (paletteOpen || typing(document.activeElement)) return;
+    if (S.view === "revision" && !S.readerOpen && RV.keydown(e)) return;
     if (e.key === "/") {
       e.preventDefault();
       openPalette();
@@ -1306,7 +1319,8 @@ function currentNotes() {
 
 function handleAction(el) {
   const a = el.dataset.action;
-  if (a === "menu") $("#app").classList.toggle("menu-open");
+  if (a.startsWith("rv-")) RV.action(el);
+  else if (a === "menu") $("#app").classList.toggle("menu-open");
   else if (a === "search") openPalette(el.dataset.q || "");
   else if (a === "theme") setTheme({ auto: "light", light: "dark", dark: "auto" }[store.get("theme", "auto")]);
   else if (a === "lock") {
@@ -1363,6 +1377,9 @@ function handleAction(el) {
   }
 }
 
+// ---------- Révision ----------
+const RV = createRevision({ S, $, esc, icon, toast, store, fmtDate, num, plural, clip, openNote, copyText });
+
 // ---------- Déchiffrement et démarrage ----------
 const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -1387,7 +1404,7 @@ async function deriveKey(password, vault) {
     base,
     { name: "AES-GCM", length: 256 },
     true,
-    ["decrypt"]
+    ["encrypt", "decrypt"] // chiffrer : pour la progression de révision
   );
 }
 
@@ -1397,8 +1414,9 @@ async function openVault(vault, key) {
   return JSON.parse(await new Response(stream).text());
 }
 
-function start(data) {
+function start(data, key, vault) {
   index(data);
+  RV.load(key, vault);
   $("#lock").hidden = true;
   $("#app").hidden = false;
   bindEvents();
@@ -1421,8 +1439,8 @@ async function boot() {
   const saved = store.get("key");
   if (saved && saved.salt === b64(vault.salt) && saved.iter === vault.iterations) {
     try {
-      const key = await crypto.subtle.importKey("raw", unb64(saved.k), "AES-GCM", false, ["decrypt"]);
-      return start(await openVault(vault, key));
+      const key = await crypto.subtle.importKey("raw", unb64(saved.k), "AES-GCM", false, ["encrypt", "decrypt"]);
+      return start(await openVault(vault, key), key, vault);
     } catch {
       store.del("key");
     }
@@ -1444,7 +1462,7 @@ async function boot() {
         const raw = new Uint8Array(await crypto.subtle.exportKey("raw", key));
         store.set("key", { salt: b64(vault.salt), iter: vault.iterations, k: b64(raw) });
       }
-      start(data);
+      start(data, key, vault);
     } catch {
       $("#lock-error").textContent = "Mot de passe incorrect.";
       form.classList.remove("shake");

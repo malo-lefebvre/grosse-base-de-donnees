@@ -1,11 +1,12 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["httpx>=0.27", "cryptography>=43"]
+# dependencies = ["httpx>=0.27", "cryptography>=43", "anthropic>=2.0"]
 # ///
 """Exporte le second cerveau (Notion + Readwise) pour le dashboard, chiffré avec ton mot de passe.
 
 Usage : uv run sync/sync.py [--env-file chemin/.env ...] [--out site]
-Variables : NOTION_TOKEN, DASHBOARD_PASSWORD, READWISE_TOKEN (facultatif).
+Variables : NOTION_TOKEN, DASHBOARD_PASSWORD, READWISE_TOKEN (facultatif),
+ANTHROPIC_API_KEY (cartes de révision, facultatif), DASHBOARD_WRITE_TOKEN (progression synchronisée, facultatif).
 """
 
 import argparse
@@ -14,16 +15,15 @@ import html
 import json
 import os
 import re
-import struct
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+import review
+import vault
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = json.loads((Path(__file__).with_name("config.json")).read_text("utf-8"))
@@ -346,7 +346,9 @@ def read_notion(token: str) -> dict:
     pages = [p for p in notion.query_all(ids["notes"]) if title_of(p) and not checkbox(p, "Archive it")]
     notes = []
     for index, page in enumerate(pages, 1):
-        print(f"  note {index}/{len(pages)} : {title_of(page)[:60]}", flush=True)
+        # Pas de titre dans le journal : il est public sur un dépôt public.
+        if index % 10 == 0 or index == len(pages):
+            print(f"  notes lues : {index}/{len(pages)}", flush=True)
         renderer = Renderer(notion, page["url"])
         body = renderer.page(page["id"])
         source = prop(page, "Détail source").get("rich_text", [])
@@ -422,12 +424,7 @@ def read_readwise(token: str) -> dict:
 # --- Chiffrement ----------------------------------------------------------------
 
 def encrypt(payload: bytes, password: str) -> bytes:
-    """Format : « PDB1 » + itérations (4 octets) + sel (16) + IV (12) + données AES-256-GCM."""
-    salt = bytes.fromhex(CONFIG["salt"])
-    iterations = int(CONFIG["iterations"])
-    key = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=iterations).derive(password.encode())
-    iv = os.urandom(12)
-    return b"PDB1" + struct.pack(">I", iterations) + salt + iv + AESGCM(key).encrypt(iv, payload, None)
+    return vault.encrypt(payload, password, bytes.fromhex(CONFIG["salt"]), int(CONFIG["iterations"]))
 
 
 def main() -> None:
@@ -453,8 +450,16 @@ def main() -> None:
         data["readwise"] = read_readwise(readwise_token)
     else:
         data["readwise"] = {"books": [], "highlights": []}
+    print("Cartes de révision…", flush=True)
+    topic_names = {t["id"]: t["name"] for t in data["topics"]}
+    data["review"] = {"notes": review.build(data["notes"], topic_names, password, CONFIG.get("siteUrl", ""))}
     data["generatedAt"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    data["repo"] = os.environ.get("GITHUB_REPOSITORY", "")
+    data["repo"] = os.environ.get("GITHUB_REPOSITORY", "") or CONFIG.get("repo", "")
+    # Jeton GitHub limité à ce dépôt : il permet à la page Révision d'enregistrer ta progression (chiffrée)
+    # sur la branche « progression ». Il n'est lisible qu'une fois les données ouvertes avec ton mot de passe.
+    write_token = os.environ.get("DASHBOARD_WRITE_TOKEN", "").strip()
+    if write_token:
+        data["write"] = {"token": write_token, "branch": CONFIG.get("progressBranch", "progression")}
 
     raw = gzip.compress(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"), 9)
     out = Path(args.out) / "data.bin"
