@@ -18,7 +18,8 @@ const MODES = [
   { id: "audio", emoji: "🎧", label: "Audio mains libres", desc: "Les cartes du jour lues à voix haute, pour marcher ou conduire." },
   { id: "resumer", emoji: "✨", label: "Résumer", desc: "Relis une note et envoie son résumé en tête, dans Notion." },
 ];
-const DEFAULTS = { types: Object.keys(TYPES), readwise: true, newPerDay: 15, pause: 6, voice: false, t: 0 };
+// v2 : les surlignages Readwise sont retirés des révisions (à la demande de Malo) ; un clic les remet.
+const DEFAULTS = { types: Object.keys(TYPES), readwise: false, newPerDay: 15, pause: 6, voice: false, t: 0, v: 2 };
 const PROGRESS_FILE = "etat.bin";
 const OUTBOX_FILE = "envois.bin";
 
@@ -72,7 +73,16 @@ export function createRevision(ctx) {
     outbox: { sha: null, outbox: [], results: [] },
     crypto: null,
   };
-  R.state.settings = { ...DEFAULTS, ...R.state.settings };
+  const storedVersion = R.state.settings?.v || 1;
+  R.state.settings = upgradeSettings(R.state.settings);
+  if (storedVersion < 2) store.set("revision", R.state);
+
+  // Réglages enregistrés par une version précédente : on y applique les changements de défaut.
+  function upgradeSettings(stored) {
+    const s = { ...DEFAULTS, ...stored };
+    if ((stored?.v || 1) >= 2) return s;
+    return { ...s, readwise: false, v: 2, t: Date.now() };
+  }
 
   // ---------- Cartes ----------
   function build() {
@@ -219,7 +229,7 @@ export function createRevision(ctx) {
     }
     const old = inDays(-60);
     for (const d of Object.keys(out.daily)) if (d < old) delete out.daily[d];
-    out.settings = { ...DEFAULTS, ...((local.settings?.t || 0) >= (remote.settings?.t || 0) ? local.settings : remote.settings) };
+    out.settings = upgradeSettings((local.settings?.t || 0) >= (remote.settings?.t || 0) ? local.settings : remote.settings);
     out.updatedAt = Math.max(local.updatedAt || 0, remote.updatedAt || 0);
     return out;
   }
